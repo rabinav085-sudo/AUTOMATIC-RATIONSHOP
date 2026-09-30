@@ -1149,8 +1149,6 @@
 
         // QR Scanner Logic
         let html5QrCode = null;
-        let isProcessingScan = false;
-
         const scanBtn = document.getElementById("scan-btn");
         const scannerContainer = document.getElementById("scanner-container");
         const closeScannerBtn = document.getElementById("close-scanner");
@@ -1160,19 +1158,21 @@
 
         scanBtn.addEventListener("click", async () => {
             scannerContainer.style.display = "flex";
-            isProcessingScan = false;
-
             try {
-                if (!html5QrCode) {
-                    html5QrCode = new Html5Qrcode("reader");
+                let stream = null;
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: "environment" } } });
+                } catch (err) {
+                    stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 }
+                if (stream) stream.getTracks().forEach(track => track.stop());
+
+                if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
 
                 await html5QrCode.start(
                     { facingMode: "environment" },
                     { fps: 10, qrbox: { width: 250, height: 250 } },
-                    (decodedText) => {
-                        handleScanResult(decodedText.trim());
-                    },
+                    async (decodedText) => { await handleScanResult(decodedText.trim()); },
                     (err) => {}
                 );
             } catch (err) {
@@ -1182,15 +1182,11 @@
         });
 
         async function stopScanner() {
-            if (html5QrCode) {
+            if (html5QrCode && html5QrCode.isScanning) {
                 try {
-                    if (html5QrCode.isScanning) {
-                        await html5QrCode.stop();
-                    }
+                    await html5QrCode.stop();
                     await html5QrCode.clear();
-                } catch (e) {
-                    console.warn("Scanner stop error:", e);
-                }
+                } catch (e) {}
             }
             scannerContainer.style.display = "none";
         }
@@ -1198,8 +1194,11 @@
         closeScannerBtn.addEventListener("click", stopScanner);
 
         async function handleScanResult(qrText) {
-            if (isProcessingScan) return;
-            isProcessingScan = true;
+            if (qrText !== "RATIONSHOP") {
+                await stopScanner();
+                showError("Invalid QR Code. Please scan official Ration Shop QR.");
+                return;
+            }
 
             await stopScanner();
             loadingOverlay.style.display = "flex";
@@ -1218,8 +1217,6 @@
             } catch (error) {
                 loadingOverlay.style.display = "none";
                 showError("Database connectivity error.");
-            } finally {
-                isProcessingScan = false;
             }
         }
 
